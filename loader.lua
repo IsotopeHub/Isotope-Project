@@ -1,19 +1,11 @@
+loadstring(game:HttpGet("https://keysystem.work.ink/scripts/019dac60-c482-77e9-84a9-bab9f7c8e67c"))()
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "Isotope Hub | Loader",
-   LoadingTitle = "Isotope Hub Rendszer",
-   LoadingSubtitle = "Verzió: 1.0",
-   KeySystem = true,
-   KeySettings = {
-      Title = "Isotope Key System",
-      Subtitle = "Szerezz kulcsot: work.ink/pelda",
-      Note = "A kulcs naponta változik!",
-      FileName = "IsotopeKey",
-      SaveKey = true,
-      GrabKeyFromSite = true,
-      Key = {"TESZT_KULCS_123"}
-   }
+   Name = "Isotope Hub",
+   LoadingTitle = "Magic Happenings",
+   KeySystem = false,
 })
 
 local placeId = game.PlaceId
