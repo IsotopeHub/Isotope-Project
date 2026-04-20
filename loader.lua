@@ -11,6 +11,7 @@ local Window = Rayfield:CreateWindow({
       Note = "A kulcs naponta változik!",
       FileName = "IsotopeKey",
       SaveKey = true,
+      GrabKeyFromSite = true,
       Key = {"TESZT_KULCS_123"}
    }
 })
