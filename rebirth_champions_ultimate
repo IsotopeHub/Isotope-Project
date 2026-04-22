@@ -1,0 +1,529 @@
+--// Services
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+--// Variables
+
+local gameFolder = Workspace:FindFirstChild("Game")
+local maps = gameFolder:FindFirstChild("Maps")
+
+local localPlayer = Players.LocalPlayer
+
+local packages = ReplicatedStorage:FindFirstChild("Packages")
+local shared = ReplicatedStorage:FindFirstChild("Shared")
+
+local rebirthMapping = {}
+local selectRebirthDropdown = nil
+local selectedRebirthIndex = nil
+
+_G.playerIsBusy = false
+
+--// Modules
+
+local knit = require(packages:FindFirstChild("Knit"))
+
+local sharedFunctions = require(shared:FindFirstChild("Functions"))
+local variables = require(shared:FindFirstChild("Variables"))
+local itemUtils = require(shared:FindFirstChild("Util")).itemUtils
+
+local rebirthList = require(shared:FindFirstChild("List"):FindFirstChild("Rebirths"))
+local upgradeList = require(shared:FindFirstChild("List"):FindFirstChild("Upgrades"))
+
+local eggList = require(shared:FindFirstChild("List"):FindFirstChild("Pets"):FindFirstChild("Eggs"))
+local mapsList = require(shared:FindFirstChild("List"):FindFirstChild("Maps"))
+local farmList = require(shared:FindFirstChild("List"):FindFirstChild("Farms"))
+local playtimeRewardsList = require(shared:FindFirstChild("List"):FindFirstChild("PlaytimeRewards"))
+local bigChestsList = require(shared:FindFirstChild("List"):FindFirstChild("Chests"))
+local treeList = require(shared:FindFirstChild("List"):FindFirstChild("Trees"))
+
+--// Knit Services
+
+local dataController = knit.GetController("DataController")
+local hatchingController = knit.GetController("HatchingController")
+local farmController = knit.GetController("FarmController")
+local treeController = knit.GetController("TreeController")
+
+local treeService = knit.GetService("TreeService")
+local inventoryService = knit.GetService("InventoryService")
+local clickService = knit.GetService("ClickService")
+local rebirthService = knit.GetService("RebirthService")
+local eggService = knit.GetService("EggService")
+local farmService = knit.GetService("FarmService")
+local rewardService = knit.GetService("RewardService")
+
+--// Functions
+
+local function NotifyPlayerBusy()
+	Rayfield:Notify({
+		Title = "!!!WARNING!!!",
+		Content = "Player character is busy right now. Please wait to finish the current task!",
+		Duration = 1,
+		Image = 4483362458,
+	})
+end
+
+--// Initialize
+
+-- rayfield
+local window = Rayfield:CreateWindow({
+	Name = "Isotope Hub",
+	Icon = 0, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
+	LoadingTitle = "Magic Hapennings",
+	LoadingSubtitle = "by gerixycs",
+	ShowText = "Rayfield", -- for mobile users to unhide Rayfield, change if you'd like
+	Theme = "Default", -- Check https://docs.sirius.menu/rayfield/configuration/themes
+
+	ToggleUIKeybind = "K", -- The keybind to toggle the UI visibility (string like "K" or Enum.KeyCode)
+
+	DisableRayfieldPrompts = false,
+	DisableBuildWarnings = false, -- Prevents Rayfield from emitting warnings when the script has a version mismatch with the interface.
+
+	-- ScriptID = "sid_xxxxxxxxxxxx", -- Your Script ID from developer.sirius.menu — enables analytics, managed keys, and script hosting
+
+	ConfigurationSaving = {
+		Enabled = true,
+		FolderName = nil, -- Create a custom folder for your hub/game
+		FileName = "Isotope Hub"
+	},
+
+	Discord = {
+		Enabled = true, -- Prompt the user to join your Discord server if their executor supports it
+		Invite = "zM7a4nENPr", -- The Discord invite code, do not include Discord.gg/. E.g. Discord.gg/ABCD would be ABCD
+		RememberJoins = true -- Set this to false to make them join the Discord every time they load it up
+	},
+
+	KeySystem = false, -- Set this to true to use our key system
+})
+
+-- farm tab
+local farmTab = window:CreateTab("Farm Tab", "tractor")
+local clickSection = farmTab:CreateSection("Click")
+
+local killButton = farmTab:CreateButton({
+	Name = "Kill UI",
+	Callback = function()
+		Rayfield:Destroy()
+	end,
+})
+
+local autoClickToggle = farmTab:CreateToggle({
+	Name = "Auto Click",
+	CurrentValue = false,
+	Flag = "AutoClickToggle",
+	Callback = function(Value)
+		if not Value then return end
+
+		task.spawn(function()
+			while Rayfield.Flags["AutoClickToggle"].CurrentValue do
+				clickService.click:Fire()
+				task.wait()
+			end
+		end)
+	end,
+})
+
+local rebirthSection = farmTab:CreateSection("Rebirth")
+
+selectRebirthDropdown = farmTab:CreateDropdown({
+	Name = "Select Rebirth",
+	Options = {"Loading..."},
+	CurrentOption = {""},
+	Flag = "SelectRebirthDropdown",
+	Callback = function(Option)
+		local label = Option[1]
+		
+		if label and rebirthMapping[label] then
+			selectedRebirthIndex = rebirthMapping[label]
+		end
+	end,
+})
+
+-- update rebirth dropdown
+task.spawn(function()
+	dataController:waitForData()
+
+	while true do
+		local data = dataController.data
+		
+		if data then
+			local currentUpgradeLevel = data.upgrades.rebirthButtons or 0
+			local upgradeData = upgradeList.rebirthButtons.upgrades[currentUpgradeLevel]
+
+			local newList = {}
+			local newMapping = {}
+			local newLabelForCurrentIndex = nil
+
+			for index, multiplier in rebirthList do
+				if upgradeData.value >= index then
+					local currentTotalRebirths = data.rebirths
+					local price = (variables.rebirthPrice + currentTotalRebirths * variables.rebirthPriceMultiplier) * multiplier + variables.rebirthPriceMultiplier * (multiplier * (multiplier - 1) / 2)
+
+					local formattedAmount = sharedFunctions.suffixes(multiplier, 2, true)
+					local formattedPrice = sharedFunctions.suffixes(price)
+
+					local label = formattedAmount .. " Rebirths (" .. formattedPrice .. ")"
+
+					table.insert(newList, label)
+					newMapping[label] = index
+
+					if selectedRebirthIndex == index then
+						newLabelForCurrentIndex = label
+					end
+				end
+			end
+
+			rebirthMapping = newMapping
+
+			if selectRebirthDropdown then
+				selectRebirthDropdown:Refresh(newList, false)
+
+				if newLabelForCurrentIndex then
+					selectRebirthDropdown:Set(newLabelForCurrentIndex)
+				end
+			end
+		end
+
+		task.wait(1)
+	end
+end)
+
+local autoRebirthToggle = farmTab:CreateToggle({
+	Name = "Auto Rebirth",
+	CurrentValue = false,
+	Flag = "AutoRebirthToggle",
+	Callback = function(Value)
+		if not Value then return end
+
+		task.spawn(function()
+			while Rayfield.Flags["AutoRebirthToggle"].CurrentValue do
+				if selectedRebirthIndex then
+					rebirthService:rebirth(selectedRebirthIndex)
+				end
+				
+				task.wait(1)
+			end
+		end)
+	end,
+})
+
+local treeSection = farmTab:CreateSection("Tree")
+
+selectTreeDropdown = farmTab:CreateDropdown({
+	Name = "Select Tree",
+	Options = {"Loading..."},
+	CurrentOption = {""},
+	Flag = "SelectTreeDropdown",
+	Callback = function(Option)
+		
+	end,
+})
+
+-- update avaible trees
+task.spawn(function()
+	dataController:waitForData()
+
+	while true do
+		local data = dataController:getData()
+
+		if data and data.maps then
+			local newList = {}
+
+			table.insert(newList, "SPAWN")
+			table.insert(newList, "FALL")
+
+			for _, mapId in data.maps do
+				for zoneKey, zoneData in treeList do
+					local zoneNameUpper = zoneKey:upper()
+					if (tostring(zoneData.mapId) == tostring(mapId) or zoneKey == tostring(mapId)) then
+						local exists = false
+						
+						for _, value in newList do
+							if value == zoneNameUpper then exists = true break end
+						end
+
+						if not exists then
+							table.insert(newList, zoneNameUpper)
+						end
+					end
+				end
+			end
+
+			if selectTreeDropdown then
+				local current = selectTreeDropdown.CurrentOption[1]
+				selectTreeDropdown:Refresh(newList, false)
+
+				if current and current ~= "" then
+					pcall(function() selectTreeDropdown:Set(current) end)
+				end
+			end
+		end
+
+		task.wait(1)
+	end
+end)
+
+local autoChopTreeToggle = farmTab:CreateToggle({
+	Name = "Auto Chop Trees",
+	CurrentValue = false,
+	Flag = "AutoChopTreeToggle",
+	Callback = function(Value)
+		if not Value then _G.playerIsBusy = false return end
+		_G.playerIsBusy = true
+
+		task.spawn(function()
+			while Rayfield.Flags["AutoChopTreeToggle"].CurrentValue do
+				local selectedMap = Rayfield.Flags["SelectTreeDropdown"].CurrentOption[1]
+
+				if not selectedMap or selectedMap == "" or selectedMap == "Loading..." then
+					task.wait(1)
+					continue
+				end
+
+				local data = dataController:getData()
+				if not data.isAxeEquipped then
+					for slot, itemData in data.inventory.exclusive do
+						local itemObject = itemUtils.createItemFromData(itemData)
+						if itemObject:getName():lower():find("axe") and not itemObject:getName():lower():find("pickaxe") then
+							inventoryService:useItem(slot)
+							task.wait(0.6)
+							break 
+						end
+					end
+				end
+
+				local targetTree = nil
+				for _, tree in CollectionService:GetTagged("Tree") do
+					if tree:GetAttribute("groupId"):upper() == selectedMap:upper() then
+						local treeId = tree:GetAttribute("treeId")
+						local currentData = dataController:getData()
+
+						if currentData.trees[tree:GetAttribute("groupId")] and currentData.trees[tree:GetAttribute("groupId")][treeId] then
+							if currentData.trees[tree:GetAttribute("groupId")][treeId].hp > 0 then
+								targetTree = tree
+								break
+							end
+						end
+					end
+				end
+
+				if targetTree then
+					local model = targetTree:FindFirstChildWhichIsA("Model")
+					local primary = model and model.PrimaryPart
+
+					if primary then
+						local character = localPlayer.Character
+						local rootPart = character:WaitForChild("HumanoidRootPart")
+						local distance = (rootPart.Position - primary.Position).Magnitude
+						local speed = 100
+
+						local tween = TweenService:Create(rootPart, TweenInfo.new(distance / speed, Enum.EasingStyle.Linear), { CFrame = primary.CFrame * CFrame.new(0, 0, 5) })
+						tween:Play()
+						tween.Completed:Wait()
+
+						local groupId = targetTree:GetAttribute("groupId")
+						local treeId = targetTree:GetAttribute("treeId")
+						local lumberId = treeService:getLumberId()
+
+						treeController:moveToTree(targetTree)
+						treeController:autoDamageTree(targetTree)
+						treeService.damage2:Fire(groupId, treeId, lumberId)
+
+						repeat
+							task.wait(0.5)
+							local loopData = dataController:getData()
+							local currentHp = (loopData.trees[groupId] and loopData.trees[groupId][treeId]) and loopData.trees[groupId][treeId].hp or 0
+						until currentHp <= 0 or not Rayfield.Flags["AutoChopTreeToggle"].CurrentValue
+
+						pcall(function() treeController:cancelAutoDamageTree() end)
+					end
+				end
+
+				task.wait(0.5)
+			end
+		end)
+	end,
+})
+
+local collectSection = farmTab:CreateSection("Auto Collect")
+
+local autoPlayTimeToggle = farmTab:CreateToggle({
+	Name = "Auto Claim Play Time Rewards",
+	CurrentValue = false,
+	Flag = "AutoPlayTimeToggle",
+	Callback = function(Value)
+		if not Value then return end
+
+		task.spawn(function()
+			while Rayfield.Flags["AutoPlayTimeToggle"].CurrentValue do
+				for id, rewardInfo in playtimeRewardsList do
+					rewardService:claimPlaytimeReward(id, true)
+					task.wait(0.5)
+				end
+				
+				task.wait(15)
+			end
+		end)
+	end,
+})
+
+local autoFarmingToggle = farmTab:CreateToggle({
+	Name = "Auto Claim Farms",
+	CurrentValue = false,
+	Flag = "AutoFarmingToggle",
+	Callback = function(Value)
+		if not Value then return end
+
+		task.spawn(function()
+			while Rayfield.Flags["AutoFarmingToggle"].CurrentValue do
+				local data = dataController:getData()
+				if not data then task.wait(15) continue end
+				
+				for farmId, farmInfo in farmList do
+					farmService:claim(farmId)
+					task.wait(0.5)
+				end
+
+				task.wait(15)
+			end
+		end)
+	end,
+})
+
+local autoClaimBigChestsToggle = farmTab:CreateToggle({
+	Name = "Auto Claim Big Chests",
+	CurrentValue = false,
+	Flag = "AutoClaimBigChestsToggle",
+	Callback = function(Value)
+		if not Value then return end
+
+		task.spawn(function()
+			while Rayfield.Flags["AutoClaimBigChestsToggle"].CurrentValue do
+				local data = dataController:getData()
+				if not data then task.wait(15) continue end
+				
+				for chestId, _ in bigChestsList do
+					rewardService:claimChest(chestId, true)
+				end
+
+				task.wait(15)
+			end
+		end)
+	end,
+})
+
+-- egg tab
+local eggTab = window:CreateTab("Egg Tab", "egg")
+local eggSection = eggTab:CreateSection("Egg")
+
+selecEggDropdown = eggTab:CreateDropdown({
+	Name = "Select egg",
+	Options = (function()
+		local temporaryTable = {}
+
+		for name, data in eggList do
+			table.insert(temporaryTable, {
+				name = name,
+				cost = data.cost or 0
+			})
+		end
+
+		table.sort(temporaryTable, function(a, b)
+			return a.cost < b.cost
+		end)
+
+		local finalList = {}
+		
+		for _, item in temporaryTable do
+			local label = item.name .. " (" .. sharedFunctions.suffixes(item.cost) .. ")"
+			table.insert(finalList, label)
+		end
+
+		return finalList
+	end)(),
+	CurrentOption = {""},
+	Flag = "SelecEggDropdown",
+	Callback = function(Option)
+		
+	end,
+})
+
+local autoOpenEggToggle = eggTab:CreateToggle({
+	Name = "Auto Open Egg",
+	CurrentValue = false,
+	Flag = "AutoOpenEggToggle",
+	Callback = function(Value)
+		if not Value then return end
+
+		task.spawn(function()
+			while Rayfield.Flags["AutoOpenEggToggle"].CurrentValue do
+				local selectedName = Rayfield.Flags["SelecEggDropdown"].CurrentOption[1]:split(" (")[1]
+				if not selectedName then task.wait(1) continue end
+				
+				eggService.openEgg:Fire(selectedName, 99)
+				task.wait(1)
+			end
+		end)
+	end,
+})
+
+-- misc tab
+local miscTab = window:CreateTab("Misc Tab", "circle-ellipsis")
+local miscSection = miscTab:CreateSection("Misc")
+
+local collectMiniChests = miscTab:CreateButton({
+	Name = "Collect Mini Chest",
+	Callback = function()
+		if _G.playerIsBusy then NotifyPlayerBusy() return end
+		_G.playerIsBusy = true
+		
+		local unclockedMaps = dataController.data.maps
+		
+		for _, mapId in unclockedMaps do
+			local map = maps:FindFirstChild(mapsList[mapId].name)
+			if not map then continue end
+			
+			local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+			local humanoid = character:WaitForChild("Humanoid")
+			local rootPart = character:WaitForChild("HumanoidRootPart")
+
+			local miniChests = map:FindFirstChild("MiniChests")
+			if not miniChests then continue end
+
+			for _, chest in miniChests:GetChildren() do
+				local touchPart = chest:FindFirstChild("Touch")
+				if not touchPart then continue end
+
+				local prompt = touchPart:FindFirstChildOfClass("ProximityPrompt")
+				if not prompt then continue end
+
+				prompt.HoldDuration = 0
+
+				local distance = (rootPart.Position - touchPart.Position).Magnitude
+				local speed = 100
+				local info = TweenInfo.new(distance / speed, Enum.EasingStyle.Linear)
+
+				local tween = TweenService:Create(rootPart, info, {CFrame = touchPart.CFrame})
+
+				tween:Play()
+				tween.Completed:Wait()
+
+				task.wait(0.1)
+				
+				for i = 1, 5, 1 do
+					prompt:InputHoldBegin()
+					task.wait(0.1)
+					prompt:InputHoldEnd()
+				end
+				
+				task.wait(5)
+			end
+		end
+
+		_G.playerIsBusy = false
+	end,
+})
