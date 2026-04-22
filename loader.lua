@@ -39,6 +39,8 @@ local window = Rayfield:CreateWindow({
 	}
 })
 
+Rayfield:Destroy()
+
 local placeId = game.PlaceId
 
 if placeId == 74260430392611 then
